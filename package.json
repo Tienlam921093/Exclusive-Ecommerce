@@ -1,0 +1,8 @@
+{
+  "name": "exclusive-ecommerce-homepage",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --check app.js && node --check i18n.js && node --check google-auth.js && node --check server.js && node auth-smoke-test.js"
+  }
+}
