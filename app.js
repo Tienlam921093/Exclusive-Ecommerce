@@ -42,6 +42,36 @@ const productParam = new URLSearchParams(window.location.search).get('product');
 const categoryParam = new URLSearchParams(window.location.search).get('category');
 const productsByName = [...Object.values(catalog).flat(), ...categoryExtras];
 const selectedProduct = productsByName.find((product) => product.name === productParam) || catalog.flash[0];
+function loadWishlist() {
+  try { const saved = JSON.parse(window.localStorage.getItem('exclusive-wishlist') || '[]'); return Array.isArray(saved) ? saved : []; } catch { return []; }
+}
+let wishlist = loadWishlist();
+function saveWishlist() {
+  window.localStorage.setItem('exclusive-wishlist', JSON.stringify(wishlist));
+  const badge = document.getElementById('wishlist-count');
+  if (badge) { badge.textContent = wishlist.length; badge.hidden = wishlist.length === 0; }
+  document.querySelectorAll('.wish[data-product], .detail-heart[data-product]').forEach((button) => {
+    const active = wishlist.includes(button.dataset.product);
+    button.classList.toggle('is-favorite', active);
+    button.textContent = active ? '♥' : '♡';
+    button.setAttribute('aria-pressed', String(active));
+    button.setAttribute('aria-label', `${active ? 'Remove' : 'Add'} ${button.dataset.product} ${active ? 'from' : 'to'} wishlist`);
+  });
+}
+function showToast(message) {
+  let toast = document.getElementById('app-toast');
+  if (!toast) { toast = document.createElement('div'); toast.id = 'app-toast'; toast.className = 'app-toast'; toast.setAttribute('role', 'status'); toast.setAttribute('aria-live', 'polite'); document.body.append(toast); }
+  toast.textContent = message;
+  toast.classList.add('visible');
+  window.clearTimeout(showToast.timeout);
+  showToast.timeout = window.setTimeout(() => toast.classList.remove('visible'), 2400);
+}
+function toggleWishlist(name) {
+  if (wishlist.includes(name)) { wishlist = wishlist.filter((item) => item !== name); showToast(`${name} removed from favourites`); }
+  else { wishlist.push(name); showToast(`${name} added to favourites`); }
+  saveWishlist();
+  renderWishlist();
+}
 const categoryGroups = {
   'Woman’s Fashion': ['The north coat', 'Gucci duffle bag', 'Quilted Satin Jacket', 'Women’s Collection Hat'],
   'Men’s Fashion': ['Men’s Everyday Jacket', 'The north coat'],
@@ -94,7 +124,7 @@ const formField = (label, type = 'text', required = true, attrs = '') => `<label
 const pageContent = {
   signup: () => `<section class="auth-page wrap"><div class="auth-art"><img src="assets/signup-shopping.png" alt="Online shopping on a phone" /></div><div class="auth-panel"><h1>Create an account</h1><p>Enter your details below</p><form class="account-form" data-auth-form="signup"><label class="form-field">Name *<input type="text" name="name" required autocomplete="name" /></label><label class="form-field">Email *<input type="email" name="email" required autocomplete="email" /></label><label class="form-field">Password *<input type="password" name="password" required minlength="8" autocomplete="new-password" /></label><button class="primary-button">Create Account</button><p class="form-status" role="status" aria-live="polite"></p></form><div class="google-auth" data-mode="signup"></div><p class="auth-status" role="status" aria-live="polite"></p><p class="auth-switch">Already have account? <a href="index.html?page=login">Log in</a></p></div></section>${crumbs('Sign Up')}`,
   login: () => `<section class="auth-page wrap"><div class="auth-art"><img src="assets/signup-shopping.png" alt="Online shopping on a phone" /></div><div class="auth-panel"><h1>Log in to Exclusive</h1><p>Enter your details below</p><form class="account-form" data-auth-form="login"><label class="form-field">Email *<input type="email" name="email" required autocomplete="email" /></label><label class="form-field">Password *<input type="password" name="password" required autocomplete="current-password" /></label><div class="login-actions"><button class="primary-button">Log In</button><a href="#forgot">Forgot Password?</a></div><p class="form-status" role="status" aria-live="polite"></p></form><p class="auth-switch">New to Exclusive? <a href="index.html?page=signup">Create an account</a></p></div></section>${crumbs('Log In')}`,
-  wishlist: () => `<section class="page-content wrap">${crumbs('Wishlist')}<div class="list-heading"><h1>Wishlist (4)</h1><button class="outline-button" data-move-all>Move All To Bag</button></div><div class="product-grid page-product-grid">${catalog.flash.map((p) => productCard(p).outerHTML).join('')}</div><div class="list-heading suggestion-heading"><h2><span class="red-mark"></span>Just For You</h2><a class="outline-button" href="index.html">See All</a></div><div class="product-grid page-product-grid">${catalog.best.map((p) => productCard(p).outerHTML).join('')}</div></section>`,
+  wishlist: () => `<section class="page-content wrap">${crumbs('Wishlist')}<div class="list-heading"><h1>Wishlist (<span id="wishlist-page-count">0</span>)</h1><button class="outline-button" data-move-all>Move All To Bag</button></div><div class="product-grid page-product-grid" id="wishlist-products"></div><div class="list-heading suggestion-heading"><h2><span class="red-mark"></span>Just For You</h2><a class="outline-button" href="index.html">See All</a></div><div class="product-grid page-product-grid">${catalog.best.map((p) => productCard(p).outerHTML).join('')}</div></section>`,
   cart: () => `<section class="page-content wrap">${crumbs('Cart')}<div class="cart-table"><div class="cart-row cart-head"><span>Product</span><span>Price</span><span>Quantity</span><span>Subtotal</span></div><div id="cart-items"></div></div><div class="cart-actions"><a class="outline-button" href="index.html">Return To Shop</a><button class="outline-button" data-update-cart>Update Cart</button></div><div class="cart-bottom"><form class="coupon"><input placeholder="Coupon Code"/><button class="primary-button" type="submit">Apply Coupon</button></form><div class="cart-total"><h2>Cart Total</h2><p><span>Subtotal:</span><b id="cart-subtotal">$0</b></p><p><span>Shipping:</span><b>Free</b></p><p class="grand-total"><span>Total:</span><b id="cart-total">$0</b></p><a class="primary-button" href="index.html?page=checkout">Proceed to checkout</a></div></div></section>`,
   category: () => { const name = findCategory(categoryParam) || 'Electronics'; const products = categoryGroups[name].map((productName) => productsByName.find((product) => product.name === productName)).filter(Boolean); return `<section class="page-content wrap">${crumbs(`Categories / ${name}`)}<div class="list-heading category-page-heading"><div><div class="eyebrow"><i></i><span>Categories</span></div><h1>${escapeHtml(name)}</h1></div><span>${products.length} Products</span></div><div class="product-grid page-product-grid">${products.map((product) => productCard(product).outerHTML).join('')}</div></section>`; },
   checkout: () => `<section class="page-content wrap">${crumbs('Account / My Account / Product / View Cart / CheckOut')}<div class="checkout-layout"><div><h1 class="page-title">Billing Details</h1><form class="billing-form" data-message="Your order has been placed.">${formField('First Name')}${formField('Company Name', 'text', false)}${formField('Street Address')}${formField('Apartment, floor, etc. (optional)', 'text', false)}${formField('Town / City')}${formField('Phone Number', 'tel')}${formField('Email Address', 'email')}<label class="check-field"><input type="checkbox"/> Save this information for faster check-out next time</label></form></div><div class="order-summary"><div class="order-items" id="checkout-items"></div><p><span>Subtotal</span><b id="checkout-subtotal">$0.00</b></p><p><span>Shipping</span><b>Free</b></p><p class="grand-total"><span>Total</span><b id="checkout-total">$0.00</b></p><label class="payment-option"><input type="radio" name="payment" value="bank" checked/> Bank</label><label class="payment-option"><input type="radio" name="payment" value="cod"/> Cash on delivery</label><div class="bank-payment-details" id="bank-payment-details" hidden><label class="form-field">Bank Name *<select name="bankName"><option value="">Select your bank</option><option>Vietcombank</option><option>VietinBank</option><option>BIDV</option><option>Agribank</option><option>MB Bank</option><option>Techcombank</option><option>ACB</option><option>VPBank</option><option>TPBank</option><option>Sacombank</option><option>HDBank</option><option>SHB</option><option>VIB</option><option>OCB</option><option>MSB</option><option>SeABank</option><option>Eximbank</option><option>LPBank</option><option>PVcomBank</option><option>ABBANK</option><option>Bac A Bank</option><option>Viet A Bank</option><option>Nam A Bank</option><option>KienlongBank</option><option>NCB</option><option>VietBank</option><option>PGBank</option><option>CBBank</option><option>BaoViet Bank</option><option>Woori Bank</option><option>Shinhan Bank</option><option>HSBC Vietnam</option><option>Standard Chartered Vietnam</option></select></label><label class="form-field">Bank Account Number *<input name="bankAccount" type="text" inputmode="numeric" autocomplete="off" placeholder="Enter your bank account number"/></label></div><form class="coupon"><input placeholder="Coupon Code"/><button class="primary-button" type="button">Apply Coupon</button></form><button class="primary-button place-order" data-submit-form=".billing-form">Place Order</button><p class="order-submit-status" role="status" aria-live="polite"></p></div></div></section>`,
@@ -102,7 +132,7 @@ const pageContent = {
   orders: () => `<section class="page-content wrap">${crumbs('My Account / My Orders')}<h1 class="page-title">My Orders</h1><div class="order-tabs"><a class="selected" href="index.html?page=orders">All Orders</a><a href="index.html?page=orders#cancellations">Cancelled</a></div><div class="orders-list" id="orders-list"></div></section>`,
   about: () => `<section class="page-content wrap">${crumbs('About')}<div class="about-story"><div><h1>Our Story</h1><p>Launched in 2015, Exclusive is South Asia’s premier online shopping marketplace with an active presence in Bangladesh. Supported by wide range of tailored marketing, data and service solutions, Exclusive has 10,500 sellers and 300 brands and serves 3 millions customers across the region.</p><p>Exclusive has more than 1 Million products to offer, growing at a very fast pace. Exclusive offers a diverse assortment in categories ranging from consumer.</p></div><img src="assets/about-shoppers.png" alt="Two shoppers browsing their phones"/></div><div class="stats-grid"><article><b>10.5k</b><span>Sallers active our site</span></article><article class="highlight"><b>33k</b><span>Mopnthly Produduct Sale</span></article><article><b>45.5k</b><span>Customer active in our site</span></article><article><b>25k</b><span>Anual gross sale in our site</span></article></div><div class="team-grid"><article><img src="assets/about-team-1.png" alt="Tom Cruise"/><h2>Tom Cruise</h2><p>Founder &amp; Chairman</p><div>𝕏　◎　in</div></article><article><img src="assets/about-team-2.png" alt="Emma Watson"/><h2>Emma Watson</h2><p>Managing Director</p><div>𝕏　◎　in</div></article><article><img src="assets/about-team-3.png" alt="Will Smith"/><h2>Will Smith</h2><p>Product Designer</p><div>𝕏　◎　in</div></article></div></section>`,
   contact: () => `<section class="page-content wrap">${crumbs('Contact')}<div class="contact-layout"><aside class="contact-info"><article><h2><span>☎</span> Call To Us</h2><p>We are available 24/7, 7 days a week.</p><p>Phone: +8801611112222</p></article><hr/><article><h2><span>✉</span> Write To Us</h2><p>Fill out our form and we will contact you within 24 hours.</p><p>Emails: customer@exclusive.com</p><p>Emails: support@exclusive.com</p></article></aside><form class="contact-form" data-message="Thanks, your message has been sent."><div class="contact-fields"><input aria-label="Your Name" placeholder="Your Name *" required/><input type="email" aria-label="Your Email" placeholder="Your Email *" required/><input aria-label="Your Phone" placeholder="Your Phone *" required/></div><textarea placeholder="Your Message" aria-label="Your Message" rows="8" required></textarea><button class="primary-button">Send Message</button></form></div></section>`,
-  detail: () => { const product = selectedProduct; const gallery = product.gallery || [product.image, product.image, product.image, product.image]; return `<section class="page-content wrap">${crumbs(`Account / Gaming / ${product.name}`)}<div class="detail-layout"><div class="detail-thumbs">${gallery.map((image, index) => `<button type="button" class="detail-thumb${index === 0 ? ' selected' : ''}' data-detail-image="${image}" aria-label="View product image ${index + 1}"><img src="${assetUrl(image)}" alt="${product.name} view ${index + 1}"/></button>`).join('')}</div><div class="detail-main-image"><img id="detail-main-image" src="${assetUrl(product.detailImage || product.image)}" data-fallback-src="${assetUrl(product.image)}" alt="${product.name}"/></div><div class="detail-info"><h1>${product.name}</h1><div class="detail-rating">★★★★★ <span>(${product.rating} Reviews)</span>　<i>In Stock</i></div><p class="detail-price">${product.price}</p><p class="detail-description">High quality ${product.name.toLowerCase()} with comfortable design and reliable performance for everyday use.</p><hr/><div class="choice-row"><span>Colours:</span><button class="color-choice blue" aria-label="Blue"></button><button class="color-choice red" aria-label="Red"></button></div><div class="choice-row"><span>Size:</span><button class="size-choice">XS</button><button class="size-choice">S</button><button class="size-choice selected">M</button><button class="size-choice">L</button><button class="size-choice">XL</button></div><div class="buy-row"><div class="quantity-control"><button data-qty="-1">−</button><b id="detail-quantity">1</b><button data-qty="1">+</button></div><button class="primary-button" data-add-detail data-product="${product.name}">Buy Now</button><button class="detail-heart" aria-label="Add to wishlist">♡</button></div><div class="delivery-box"><div><b>▱　Free Delivery</b><a href="#delivery">Enter your postal code for Delivery Availability</a></div><div><b>↩　Return Delivery</b><span>Free 30 Days Delivery Returns. <a href="#policy">Details</a></span></div></div></div></div><h2 class="related-title">Related Item</h2><div class="product-grid page-product-grid">${catalog.best.map(p => productCard(p).outerHTML).join('')}</div></section>`; },
+  detail: () => { const product = selectedProduct; const gallery = product.gallery || [product.image, product.image, product.image, product.image]; return `<section class="page-content wrap">${crumbs(`Account / Gaming / ${product.name}`)}<div class="detail-layout"><div class="detail-thumbs">${gallery.map((image, index) => `<button type="button" class="detail-thumb${index === 0 ? ' selected' : ''}" data-detail-image="${image}" aria-label="View product image ${index + 1}"><img src="${assetUrl(image)}" data-fallback-src="${assetUrl(product.image)}" alt="${product.name} view ${index + 1}"/></button>`).join('')}</div><div class="detail-main-image"><img id="detail-main-image" src="${assetUrl(product.detailImage || product.image)}" data-fallback-src="${assetUrl(product.image)}" alt="${product.name}"/></div><div class="detail-info"><h1>${product.name}</h1><div class="detail-rating">★★★★★ <span>(${product.rating} Reviews)</span>　<i>In Stock</i></div><p class="detail-price">${product.price}</p><p class="detail-description">High quality ${product.name.toLowerCase()} with comfortable design and reliable performance for everyday use.</p><hr/><div class="choice-row"><span>Colours:</span><button class="color-choice blue" aria-label="Blue"></button><button class="color-choice red" aria-label="Red"></button></div><div class="choice-row"><span>Size:</span><button class="size-choice">XS</button><button class="size-choice">S</button><button class="size-choice selected">M</button><button class="size-choice">L</button><button class="size-choice">XL</button></div><div class="buy-row"><div class="quantity-control"><button data-qty="-1">−</button><b id="detail-quantity">1</b><button data-qty="1">+</button></div><button class="primary-button" data-add-detail data-product="${product.name}">Buy Now</button><button class="detail-heart" data-product="${product.name}" aria-label="Add ${product.name} to wishlist" aria-pressed="false">♡</button></div><div class="delivery-box"><div><b>▱　Free Delivery</b><a href="#delivery">Enter your postal code for Delivery Availability</a></div><div><b>↩　Return Delivery</b><span>Free 30 Days Delivery Returns. <a href="#policy">Details</a></span></div></div></div></div><h2 class="related-title">Related Item</h2><div class="product-grid page-product-grid">${catalog.best.map(p => productCard(p).outerHTML).join('')}</div></section>`; },
   '404': () => `<section class="page-content wrap error-page">${crumbs('404 Error')}<div><h1>404 Not Found</h1><p>Your visited page not found. You may go home page.</p><a class="primary-button" href="index.html">Back to home page</a></div></section>`,
 };
 
@@ -111,7 +141,6 @@ if (pageParam && pageContent[pageParam]) {
   document.querySelectorAll('.main-nav a').forEach((link) => link.classList.toggle('active', link.href.includes(`page=${pageParam}`)));
   document.title = `${pageParam === '404' ? '404 Error' : pageParam[0].toUpperCase() + pageParam.slice(1)} — Exclusive`;
 }
-updateBankPaymentFields();
 
 async function updateAccountHeader() {
   const dropdown = document.getElementById('account-dropdown');
@@ -128,8 +157,8 @@ async function updateAccountHeader() {
       trigger.setAttribute('aria-label', `Account menu for ${data.user.name}`);
       trigger.title = data.user.name;
       if (data.user.picture) {
-        const avatar = trigger.querySelector('.account-avatar');
-        avatar.innerHTML = `<img src="${escapeHtml(data.user.picture)}" alt="" referrerpolicy="no-referrer"/>`;
+        const icon = trigger.querySelector('svg');
+        if (icon) icon.outerHTML = `<img class="account-avatar" src="${escapeHtml(data.user.picture)}" alt="" referrerpolicy="no-referrer"/>`;
       }
     }
   } catch {
@@ -143,12 +172,13 @@ function escapeHtml(value) {
 }
 
 updateAccountHeader();
+saveWishlist();
 
 function productCard(product) {
   const card = document.createElement('article');
   card.className = 'product-card';
   card.dataset.name = product.name.toLowerCase();
-  card.innerHTML = `<div class="product-visual">${product.discount ? `<span class="discount">${product.discount}</span>` : ''}<button class="wish" aria-label="Add ${product.name} to wishlist">♡</button><button class="view" aria-label="View details for ${product.name}">⌕</button><img src="assets/${product.image}" alt="${product.name}"/><button class="add-cart" data-product="${product.name}">Add To Cart</button></div><div class="product-info"><h3 data-product="${product.name}">${product.name}</h3><div><span class="price">${product.price}</span>${product.old ? `<span class="old-price">${product.old}</span>` : ''}</div><div class="rating" aria-label="Rated 5 out of 5">★★★★★ <small>(${product.rating})</small></div></div>`;
+  card.innerHTML = `<div class="product-visual">${product.discount ? `<span class="discount">${product.discount}</span>` : ''}<button class="wish${wishlist.includes(product.name) ? ' is-favorite' : ''}" data-product="${escapeHtml(product.name)}" aria-label="Add ${escapeHtml(product.name)} to wishlist" aria-pressed="${wishlist.includes(product.name)}">${wishlist.includes(product.name) ? '♥' : '♡'}</button><button class="view" data-product="${escapeHtml(product.name)}" aria-label="View details for ${escapeHtml(product.name)}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg></button><img src="${assetUrl(product.image)}" alt="${escapeHtml(product.name)}"/><button class="add-cart" data-product="${escapeHtml(product.name)}">Add To Cart</button></div><div class="product-info"><h3 data-product="${escapeHtml(product.name)}">${escapeHtml(product.name)}</h3><div><span class="price">${product.price}</span>${product.old ? `<span class="old-price">${product.old}</span>` : ''}</div><div class="rating" aria-label="Rated 5 out of 5">★★★★★ <small>(${product.rating})</small></div></div>`;
   return card;
 }
 
@@ -205,7 +235,7 @@ if (countBadge) countBadge.textContent = cartCount;
 function saveCart() {
   cartCount = cart.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
   window.localStorage.setItem('exclusive-cart', JSON.stringify(cart));
-  document.querySelectorAll('#cart-count').forEach((badge) => { badge.textContent = cartCount; });
+  document.querySelectorAll('#cart-count').forEach((badge) => { badge.textContent = cartCount; badge.hidden = cartCount === 0; });
   renderCheckoutSummary();
 }
 
@@ -216,6 +246,16 @@ function addToCart(name, quantity = 1) {
   if (existing) existing.quantity += quantity;
   else cart.push({ name: product.name, price: product.price, image: product.image, quantity });
   saveCart();
+  showToast(`${product.name} added to cart`);
+}
+
+function renderWishlist() {
+  const target = document.getElementById('wishlist-products');
+  const count = document.getElementById('wishlist-page-count');
+  if (count) count.textContent = wishlist.length;
+  if (!target) return;
+  const products = wishlist.map((name) => productsByName.find((product) => product.name === name)).filter(Boolean);
+  target.innerHTML = products.length ? products.map((product) => productCard(product).outerHTML).join('') : '<p class="cart-empty wishlist-empty">Your favourites list is empty. Tap the heart on a product to save it here.</p>';
 }
 
 function renderCart() {
@@ -231,6 +271,7 @@ function renderCart() {
 
 saveCart();
 renderCart();
+renderWishlist();
 
 function renderCheckoutSummary() {
   const target = document.getElementById('checkout-items');
@@ -257,6 +298,8 @@ function updateBankPaymentFields() {
     field.required = bankSelected;
   });
 }
+
+updateBankPaymentFields();
 
 function updateCartTotals() {
   const total = cart.reduce((sum, item) => sum + Number(item.price.replace(/[^\d.]/g, '')) * Number(item.quantity || 0), 0);
@@ -349,6 +392,14 @@ detailMainImage?.addEventListener('error', () => {
   detailMainImage.dataset.fallbackAttempted = 'true';
   detailMainImage.src = fallback;
 });
+document.addEventListener('error', (event) => {
+  const image = event.target;
+  if (!(image instanceof HTMLImageElement) || !image.matches('.detail-thumb img')) return;
+  const fallback = image.dataset.fallbackSrc;
+  if (!fallback || image.dataset.fallbackAttempted === 'true') return;
+  image.dataset.fallbackAttempted = 'true';
+  image.src = fallback;
+}, true);
 document.addEventListener('click', (event) => {
   if (event.target.closest('#account-trigger')) {
     const trigger = document.getElementById('account-trigger');
@@ -364,17 +415,19 @@ document.addEventListener('click', (event) => {
     fetch('/api/logout', { method: 'POST', credentials: 'same-origin' }).finally(() => window.location.assign('index.html'));
   }
   if (event.target.matches('.add-cart')) {
-    addToCart(event.target.dataset.product, 1);
-    event.target.textContent = 'Added';
-    window.setTimeout(() => { event.target.textContent = 'Add To Cart'; }, 900);
+    const addButton = event.target;
+    addToCart(addButton.dataset.product, 1);
+    addButton.textContent = 'Added';
+    window.setTimeout(() => { addButton.textContent = 'Add To Cart'; }, 900);
   }
-  if (event.target.matches('.view') || event.target.matches('.product-info h3')) {
-    const name = event.target.dataset.product || event.target.closest('.product-card')?.querySelector('.product-info h3')?.dataset.product || catalog.flash[0].name;
+  if (event.target.closest('.view') || event.target.matches('.product-info h3')) {
+    const trigger = event.target.closest('.view, .product-info h3');
+    const name = trigger.dataset.product || trigger.closest('.product-card')?.querySelector('.product-info h3')?.dataset.product || catalog.flash[0].name;
     window.location.href = `index.html?page=detail&product=${encodeURIComponent(name)}`;
   }
-  if (event.target.matches('.wish')) {
-    event.target.classList.toggle('is-favorite');
-    event.target.textContent = event.target.classList.contains('is-favorite') ? '♥' : '♡';
+  const wishButton = event.target.closest('.wish');
+  if (wishButton) {
+    toggleWishlist(wishButton.dataset.product);
   }
   if (event.target.matches('.menu-toggle')) {
     document.querySelector('.main-nav').classList.toggle('open');
@@ -383,8 +436,9 @@ document.addEventListener('click', (event) => {
     window.location.href = `index.html?page=${event.target.closest('[data-page]').dataset.page}`;
   }
   if (event.target.matches('[data-move-all]')) {
-    catalog.flash.forEach((product) => addToCart(product.name, 1));
+    wishlist.forEach((name) => addToCart(name, 1));
     event.target.textContent = 'Moved To Bag';
+    if (wishlist.length) showToast('Favourite products added to cart');
   }
   if (event.target.matches('.remove-item')) {
     const index = Number(event.target.dataset.cartIndex);
@@ -408,10 +462,12 @@ document.addEventListener('click', (event) => {
     addToCart(event.target.dataset.product, Number(document.getElementById('detail-quantity')?.textContent || 1));
     event.target.textContent = 'Added to Cart';
   }
-  if (event.target.matches('.detail-thumb, .detail-thumb img')) {
+  if (event.target.closest('.detail-thumb')) {
     const thumb = event.target.closest('.detail-thumb');
     const mainImage = document.getElementById('detail-main-image');
+    if (!thumb || !mainImage) return;
     mainImage.dataset.fallbackAttempted = 'false';
+    mainImage.dataset.fallbackSrc = thumb.querySelector('img')?.dataset.fallbackSrc || assetUrl(selectedProduct.image);
     mainImage.src = assetUrl(thumb.dataset.detailImage);
     document.querySelectorAll('.detail-thumb').forEach((item) => item.classList.toggle('selected', item === thumb));
   }
@@ -419,9 +475,9 @@ document.addEventListener('click', (event) => {
     document.querySelectorAll('.size-choice').forEach((button) => button.classList.remove('selected'));
     event.target.classList.add('selected');
   }
-  if (event.target.matches('.detail-heart')) {
-    event.target.classList.toggle('is-favorite');
-    event.target.textContent = event.target.classList.contains('is-favorite') ? '♥' : '♡';
+  const detailHeart = event.target.closest('.detail-heart');
+  if (detailHeart) {
+    toggleWishlist(detailHeart.dataset.product);
   }
   if (event.target.matches('.place-order')) {
     void submitOrder(event.target);
