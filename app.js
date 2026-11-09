@@ -42,12 +42,29 @@ const productParam = new URLSearchParams(window.location.search).get('product');
 const categoryParam = new URLSearchParams(window.location.search).get('category');
 const productsByName = [...Object.values(catalog).flat(), ...categoryExtras];
 const selectedProduct = productsByName.find((product) => product.name === productParam) || catalog.flash[0];
+let shoppingUserId = null;
+function shoppingKey(kind) { return `exclusive-${kind}:${encodeURIComponent(shoppingUserId)}`; }
+function setShoppingUser(user) {
+  shoppingUserId = user?.id || null;
+  wishlist = loadWishlist();
+  cart = loadCart();
+  saveWishlist();
+  saveCart();
+  renderWishlist();
+  renderCart();
+}
+function requireShoppingAccount() {
+  if (shoppingUserId) return true;
+  showToast('Please log in to save favourites or add products to your cart.');
+  return false;
+}
 function loadWishlist() {
-  try { const saved = JSON.parse(window.localStorage.getItem('exclusive-wishlist') || '[]'); return Array.isArray(saved) ? saved : []; } catch { return []; }
+  if (!shoppingUserId) return [];
+  try { const saved = JSON.parse(window.localStorage.getItem(shoppingKey('wishlist')) || '[]'); return Array.isArray(saved) ? saved : []; } catch { return []; }
 }
 let wishlist = loadWishlist();
 function saveWishlist() {
-  window.localStorage.setItem('exclusive-wishlist', JSON.stringify(wishlist));
+  if (shoppingUserId) window.localStorage.setItem(shoppingKey('wishlist'), JSON.stringify(wishlist));
   const badge = document.getElementById('wishlist-count');
   if (badge) { badge.textContent = wishlist.length; badge.hidden = wishlist.length === 0; }
   document.querySelectorAll('.wish[data-product], .detail-heart[data-product]').forEach((button) => {
@@ -67,6 +84,7 @@ function showToast(message) {
   showToast.timeout = window.setTimeout(() => toast.classList.remove('visible'), 2400);
 }
 function toggleWishlist(name) {
+  if (!requireShoppingAccount()) return;
   if (wishlist.includes(name)) { wishlist = wishlist.filter((item) => item !== name); showToast(`${name} removed from favourites`); }
   else { wishlist.push(name); showToast(`${name} added to favourites`); }
   saveWishlist();
@@ -150,6 +168,7 @@ async function updateAccountHeader() {
     const response = await fetch('/api/session', { credentials: 'same-origin', cache: 'no-store' });
     const data = await response.json();
     const signedIn = response.ok && Boolean(data.user);
+    setShoppingUser(signedIn ? data.user : null);
     dropdown.hidden = !signedIn;
     guest.hidden = signedIn;
     if (signedIn) {
@@ -162,6 +181,7 @@ async function updateAccountHeader() {
       }
     }
   } catch {
+    setShoppingUser(null);
     dropdown.hidden = true;
     guest.hidden = false;
   }
@@ -224,7 +244,8 @@ startCountdown('.countdown', 'exclusive-flash-sale-deadline', 3 * 86400 + 23 * 3
 startCountdown('.round-timer', 'exclusive-music-sale-deadline', 5 * 86400 + 23 * 3600 + 59 * 60 + 35, 6 * 86400);
 
 function loadCart() {
-  try { const cart = JSON.parse(window.localStorage.getItem('exclusive-cart') || '[]'); return Array.isArray(cart) ? cart : []; } catch { return []; }
+  if (!shoppingUserId) return [];
+  try { const cart = JSON.parse(window.localStorage.getItem(shoppingKey('cart')) || '[]'); return Array.isArray(cart) ? cart : []; } catch { return []; }
 }
 
 let cart = loadCart();
@@ -234,12 +255,13 @@ if (countBadge) countBadge.textContent = cartCount;
 
 function saveCart() {
   cartCount = cart.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
-  window.localStorage.setItem('exclusive-cart', JSON.stringify(cart));
+  if (shoppingUserId) window.localStorage.setItem(shoppingKey('cart'), JSON.stringify(cart));
   document.querySelectorAll('#cart-count').forEach((badge) => { badge.textContent = cartCount; badge.hidden = cartCount === 0; });
   renderCheckoutSummary();
 }
 
 function addToCart(name, quantity = 1) {
+  if (!requireShoppingAccount()) return false;
   const product = productsByName.find((item) => item.name === name);
   if (!product) return;
   const existing = cart.find((item) => item.name === name);
@@ -247,6 +269,7 @@ function addToCart(name, quantity = 1) {
   else cart.push({ name: product.name, price: product.price, image: product.image, quantity });
   saveCart();
   showToast(`${product.name} added to cart`);
+  return true;
 }
 
 function renderWishlist() {
@@ -412,11 +435,15 @@ document.addEventListener('click', (event) => {
     document.getElementById('account-trigger')?.setAttribute('aria-expanded', 'false');
   }
   if (event.target.closest('#logout-button')) {
-    fetch('/api/logout', { method: 'POST', credentials: 'same-origin' }).finally(() => window.location.assign('index.html'));
+    fetch('/api/logout', { method: 'POST', credentials: 'same-origin' }).then(response => {
+      if (!response.ok) throw Error('Logout failed');
+      setShoppingUser(null);
+      window.location.assign('index.html');
+    }).catch(() => showToast('Logout failed. Please try again.'));
   }
   if (event.target.matches('.add-cart')) {
     const addButton = event.target;
-    addToCart(addButton.dataset.product, 1);
+    if (!addToCart(addButton.dataset.product, 1)) return;
     addButton.textContent = 'Added';
     window.setTimeout(() => { addButton.textContent = 'Add To Cart'; }, 900);
   }
@@ -436,6 +463,7 @@ document.addEventListener('click', (event) => {
     window.location.href = `index.html?page=${event.target.closest('[data-page]').dataset.page}`;
   }
   if (event.target.matches('[data-move-all]')) {
+    if (!requireShoppingAccount()) return;
     wishlist.forEach((name) => addToCart(name, 1));
     event.target.textContent = 'Moved To Bag';
     if (wishlist.length) showToast('Favourite products added to cart');
@@ -459,7 +487,7 @@ document.addEventListener('click', (event) => {
     node.textContent = Math.max(1, Number(node.textContent) + Number(event.target.dataset.qty));
   }
   if (event.target.matches('[data-add-detail]')) {
-    addToCart(event.target.dataset.product, Number(document.getElementById('detail-quantity')?.textContent || 1));
+    if (!addToCart(event.target.dataset.product, Number(document.getElementById('detail-quantity')?.textContent || 1))) return;
     event.target.textContent = 'Added to Cart';
   }
   if (event.target.closest('.detail-thumb')) {
